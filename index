@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Mapa de Antenas RF - Google Maps Style</title>
+  
+  <!-- Leaflet & FontAwesome -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #e5e3df; }
+    #map { width: 100%; height: 100%; position: absolute; top: 0; left: 0; z-index: 1; }
+
+    /* Barra Superior */
+    .top-container {
+      position: absolute;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 92%;
+      max-width: 480px;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .search-bar {
+      background: #ffffff;
+      border-radius: 28px;
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+      gap: 12px;
+    }
+
+    .search-bar input {
+      border: none;
+      outline: none;
+      width: 100%;
+      font-size: 0.95rem;
+      color: #3c4043;
+    }
+
+    .search-bar i { color: #5f6368; font-size: 1.1rem; }
+    .profile-icon { color: #0b57d0 !important; font-size: 1.3rem !important; }
+
+    /* Accesos rápidos (Pills) */
+    .pills-row {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      white-space: nowrap;
+      padding-bottom: 2px;
+      scrollbar-width: none;
+    }
+    .pills-row::-webkit-scrollbar { display: none; }
+
+    .pill {
+      background: #ffffff;
+      border-radius: 20px;
+      padding: 8px 14px;
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: #3c4043;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.18);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      border: none;
+    }
+    .pill-accent { background: #0b57d0; color: white; }
+    .pill-accent i { color: white !important; }
+    .pill i { color: #1a73e8; }
+
+    /* Botón flotante para centrar GPS */
+    .fab-location {
+      position: absolute;
+      bottom: 85px;
+      right: 16px;
+      z-index: 1000;
+      background: #ffffff;
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+      cursor: pointer;
+      border: none;
+      color: #1a73e8;
+      font-size: 1.2rem;
+    }
+
+    /* Menú Inferior */
+    .bottom-nav {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      height: 65px;
+      background: #ffffff;
+      border-top: 1px solid #e0e0e0;
+      z-index: 1000;
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+    }
+
+    .nav-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      color: #5f6368;
+      font-size: 0.72rem;
+      cursor: pointer;
+      background: none;
+      border: none;
+      width: 33%;
+    }
+    .nav-item.active { color: #0b57d0; font-weight: 600; }
+    .nav-item i { font-size: 1.2rem; }
+
+    /* Modal Formulario */
+    .modal-overlay {
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.5);
+      z-index: 2000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    .modal-overlay.active { display: flex; }
+
+    .modal-card {
+      background: white;
+      border-radius: 16px;
+      width: 100%;
+      max-width: 380px;
+      padding: 20px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .modal-card h3 { font-size: 1.1rem; color: #202124; display: flex; align-items: center; gap: 8px; }
+    .form-group { display: flex; flex-direction: column; gap: 6px; }
+    .form-group label { font-size: 0.8rem; font-weight: 600; color: #5f6368; }
+    .form-group input, .form-group select {
+      padding: 10px;
+      border: 1px solid #dadce0;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      outline: none;
+    }
+    .form-group input:focus, .form-group select:focus { border-color: #1a73e8; }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+    .btn-modal { padding: 8px 16px; border-radius: 8px; border: none; font-size: 0.85rem; font-weight: 600; cursor: pointer; }
+    .btn-cancel { background: #f1f3f4; color: #3c4043; }
+    .btn-save { background: #1a73e8; color: white; }
+
+    /* Drawer de Antenas */
+    .drawer {
+      position: absolute;
+      bottom: -100%;
+      left: 0;
+      width: 100%;
+      max-height: 60vh;
+      background: #ffffff;
+      border-top-left-radius: 20px;
+      border-top-right-radius: 20px;
+      z-index: 1001;
+      box-shadow: 0 -4px 12px rgba(0,0,0,0.15);
+      transition: bottom 0.3s ease-in-out;
+      padding: 16px;
+      overflow-y: auto;
+    }
+    .drawer.open { bottom: 65px; }
+    .drawer-handle { width: 36px; height: 4px; background: #dadce0; border-radius: 2px; margin: 0 auto 12px auto; }
+    .drawer-title { font-size: 1.1rem; font-weight: 600; color: #202124; margin-bottom: 12px; }
+
+    .tower-card {
+      background: #f8f9fa;
+      border: 1px solid #e8eaed;
+      border-radius: 10px;
+      padding: 10px 14px;
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .tower-card-info h4 { font-size: 0.95rem; color: #1a73e8; display: flex; align-items: center; gap: 6px; }
+    .tower-card-info p { font-size: 0.78rem; color: #5f6368; margin-top: 2px; }
+    .tower-badge { font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; background: #e8f0fe; color: #1a73e8; font-weight: 600; }
+    .tower-btns button { border: none; background: none; font-size: 1rem; padding: 6px; cursor: pointer; }
+
+    /* Marcador GPS Usuario */
+    .user-marker {
+      width: 16px; height: 16px;
+      background-color: #1a73e8;
+      border: 3px solid #ffffff;
+      border-radius: 50%;
+      box-shadow: 0 0 8px rgba(26,115,232,0.8);
+    }
+
+    /* Marcadores Dinámicos de Torre */
+    .custom-pin-icon {
+      width: 32px; height: 32px;
+      border-radius: 50% 50% 50% 0;
+      transform: rotate(-45deg);
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+      border: 1px solid white;
+      color: white;
+    }
+    .custom-pin-icon i { transform: rotate(45deg); font-size: 13px; }
+  </style>
+</head>
+<body>
+
+  <!-- Barra Superior -->
+  <div class="top-container">
+    <div class="search-bar">
+      <i class="fa-solid fa-bars" onclick="toggleDrawer()"></i>
+      <input type="text" placeholder="Busca antenas de RF..." id="searchInput" onkeyup="filterTowers()">
+      <i class="fa-solid fa-microphone"></i>
+      <i class="fa-solid fa-circle-user profile-icon"></i>
+    </div>
+    
+    <div class="pills-row">
+      <button class="pill pill-accent" onclick="saveUserLocationAsTower()"><i class="fa-solid fa-location-dot"></i> Guardar Mi Ubicación</button>
+      <button class="pill" onclick="centerOnUser()"><i class="fa-solid fa-crosshairs"></i> GPS</button>
+      <button class="pill" onclick="toggleDrawer()"><i class="fa-solid fa-tower-broadcast"></i> Mis Torres</button>
+      <button class="pill" onclick="exportGeoJSON()"><i class="fa-solid fa-download"></i> Exportar</button>
+    </div>
+  </div>
+
+  <!-- Botón Flotante GPS -->
+  <button class="fab-location" onclick="centerOnUser()" title="Centrar en mi posición">
+    <i class="fa-solid fa-crosshairs"></i>
+  </button>
+
+  <!-- Modal Formulario de Antenas -->
+  <div class="modal-overlay" id="towerModal">
+    <div class="modal-card">
+      <h3><i class="fa-solid fa-tower-cell" style="color:#1a73e8;"></i> Configurar Antena RF</h3>
+      
+      <div class="form-group">
+        <label for="towerName">Nombre de la Estructura:</label>
+        <input type="text" id="towerName" placeholder="Ej: Torre 1, Nodo Norte...">
+      </div>
+
+      <div class="form-group">
+        <label for="towerType">Tipo de Estructura:</label>
+        <select id="towerType">
+          <option value="Telefonía">Torre de Telefonía</option>
+          <option value="Panel">Panel Sectorial</option>
+          <option value="Tanque">Tanque de Agua / Elevado</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="towerRadius">Radio de Cobertura (en Metros):</label>
+        <input type="number" id="towerRadius" placeholder="Ej: 500" value="500">
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn-modal btn-cancel" onclick="closeModal()">Cancelar</button>
+        <button class="btn-modal btn-save" onclick="confirmAddTower()">Guardar Antena</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Panel Desplegable (Drawer) -->
+  <div class="drawer" id="towerDrawer">
+    <div class="drawer-handle"></div>
+    <div class="drawer-title">Antenas Registradas</div>
+    <div id="drawerList">
+      <p style="font-size:0.85rem; color:#70757a; text-align:center;">Toca el mapa o usa "Guardar Mi Ubicación" para crear una antena.</p>
+    </div>
+  </div>
+
+  <!-- Barra Navegación Inferior -->
+  <div class="bottom-nav">
+    <button class="nav-item active" onclick="closeDrawer()">
+      <i class="fa-solid fa-compass"></i>
+      <span>Explorar</span>
+    </button>
+    <button class="nav-item" onclick="toggleDrawer()">
+      <i class="fa-solid fa-tower-cell"></i>
+      <span>Torres</span>
+    </button>
+    <button class="nav-item" onclick="exportGeoJSON()">
+      <i class="fa-solid fa-file-export"></i>
+      <span>Exportar</span>
+    </button>
+  </div>
+
+  <!-- Contenedor Mapa -->
+  <div id="map"></div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    // Inicializar mapa (Base Francisco Álvarez)
+    const map = L.map('map', { zoomControl: false }).setView([-34.6367, -58.8525], 14);
+    L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap &copy; CARTO'
+    }).addTo(map);
+
+    let towerCount = 1;
+    const towers = [];
+    let userMarker = null;
+    let lastUserCoords = null;
+    let tempCoords = null; // Guardar coordenadas temporales antes de abrir modal
+
+    // Marcador de Usuario (Punto Azul)
+    const userIcon = L.divIcon({
+      className: 'user-marker',
+      iconSize: [16, 16],
+      iconAnchor: [8, 8]
+    });
+
+    // Geolocalización continua
+    if ("geolocation" in navigator) {
+      navigator.geolocation.watchPosition(
+        position => {
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
+          lastUserCoords = [lat, lng];
+
+          if (!userMarker) {
+            userMarker = L.marker([lat, lng], { icon: userIcon }).addTo(map);
+            map.setView([lat, lng], 15);
+          } else {
+            userMarker.setLatLng([lat, lng]);
+          }
+        },
+        error => {
+          console.warn("Manejo de GPS activo.");
+        },
+        { enableHighAccuracy: true }
+      );
+    }
+
+    function centerOnUser() {
+      if (lastUserCoords) {
+        map.setView(lastUserCoords, 16, { animate: true });
+      } else {
+        alert("Obteniendo señal GPS... Asegúrate de activar la ubicación.");
+      }
+    }
+
+    // Configuración visual por tipo de antena
+    function getTypeStyle(type) {
+      switch(type) {
+        case 'Panel':
+          return { icon: 'fa-bars-staggered', color: '#0284c7' }; // Azul Cyan
+        case 'Tanque':
+          return { icon: 'fa-faucet-drip', color: '#0d9488' }; // Verde Teal
+        case 'Telefonía':
+        default:
+          return { icon: 'fa-tower-cell', color: '#e65100' }; // Naranja
+      }
+    }
+
+    // Abrir modal con ubicación del usuario
+    function saveUserLocationAsTower() {
+      if (!lastUserCoords) {
+        alert("Esperando señal GPS... Revisa los permisos de ubicación.");
+        return;
+      }
+      openModal(lastUserCoords[0], lastUserCoords[1]);
+    }
+
+    // Abrir modal al hacer clic en el mapa
+    map.on('click', function(e) {
+      openModal(e.latlng.lat, e.latlng.lng);
+    });
+
+    function openModal(lat, lng) {
+      tempCoords = { lat, lng };
+      document.getElementById('towerName').value = `Torre ${towerCount}`;
+      document.getElementById('towerRadius').value = "500";
+      document.getElementById('towerModal').classList.add('active');
+    }
+
+    function closeModal() {
+      document.getElementById('towerModal').classList.remove('active');
+      tempCoords = null;
+    }
+
+    function confirmAddTower() {
+      if (!tempCoords) return;
+
+      const name = document.getElementById('towerName').value.trim() || `Torre ${towerCount}`;
+      const type = document.getElementById('towerType').value;
+      const radiusMeters = parseFloat(document.getElementById('towerRadius').value) || 0;
+
+      addTower(tempCoords.lat, tempCoords.lng, name, type, radiusMeters);
+      
+      towerCount++;
+      closeModal();
+    }
+
+    function addTower(lat, lng, name, type, radiusMeters) {
+      const id = Date.now();
+      const style = getTypeStyle(type);
+
+      // Icono personalizado según el tipo
+      const customIcon = L.divIcon({
+        className: 'custom-pin',
+        html: `<div class="custom-pin-icon" style="background:${style.color};"><i class="fa-solid ${style.icon}"></i></div>`,
+        iconSize: [32, 32],
+        iconAnchor: [16, 32],
+        popupAnchor: [0, -32]
+      });
+
+      const marker = L.marker([lat, lng], { icon: customIcon }).addTo(map);
+
+      let circle = null;
+      if (radiusMeters > 0) {
+        circle = L.circle([lat, lng], {
+          color: style.color,
+          fillColor: style.color,
+          fillOpacity: 0.2,
+          weight: 1.5,
+          radius: radiusMeters // Directamente en metros
+        }).addTo(map);
+      }
+
+      marker.bindPopup(`
+        <b>${name}</b><br>
+        Tipo: ${type}<br>
+        Cobertura: ${radiusMeters} m
+      `).openPopup();
+
+      towers.push({ id, name, type, lat: lat.toFixed(5), lng: lng.toFixed(5), radiusMeters, marker, circle, style });
+      renderDrawerList();
+    }
+
+    function renderDrawerList(filter = '') {
+      const container = document.getElementById('drawerList');
+      container.innerHTML = '';
+
+      const filtered = towers.filter(t => t.name.toLowerCase().includes(filter.toLowerCase()));
+
+      if (filtered.length === 0) {
+        container.innerHTML = '<p style="font-size:0.85rem; color:#70757a; text-align:center;">No hay antenas guardadas.</p>';
+        return;
+      }
+
+      filtered.forEach(t => {
+        const item = document.createElement('div');
+        item.className = 'tower-card';
+        item.innerHTML = `
+          <div class="tower-card-info">
+            <h4><i class="fa-solid ${t.style.icon}" style="color:${t.style.color}"></i> ${t.name}</h4>
+            <p><span class="tower-badge">${t.type}</span> Coord: ${t.lat}, ${t.lng} | ${t.radiusMeters} m</p>
+          </div>
+          <div class="tower-btns">
+            <button style="color:#1a73e8" onclick="focusTower(${t.lat}, ${t.lng})"><i class="fa-solid fa-eye"></i></button>
+            <button style="color:#d93025" onclick="deleteTower(${t.id})"><i class="fa-solid fa-trash"></i></button>
+          </div>
+        `;
+        container.appendChild(item);
+      });
+    }
+
+    function focusTower(lat, lng) {
+      map.setView([lat, lng], 16, { animate: true });
+      closeDrawer();
+    }
+
+    function deleteTower(id) {
+      const idx = towers.findIndex(t => t.id === id);
+      if (idx !== -1) {
+        map.removeLayer(towers[idx].marker);
+        if (towers[idx].circle) map.removeLayer(towers[idx].circle);
+        towers.splice(idx, 1);
+        renderDrawerList();
+      }
+    }
+
+    function filterTowers() {
+      const query = document.getElementById('searchInput').value;
+      renderDrawerList(query);
+      if (query.trim() !== "") openDrawer();
+    }
+
+    function toggleDrawer() {
+      document.getElementById('towerDrawer').classList.toggle('open');
+    }
+
+    function openDrawer() {
+      document.getElementById('towerDrawer').classList.add('open');
+    }
+
+    function closeDrawer() {
+      document.getElementById('towerDrawer').classList.remove('open');
+    }
+
+    function exportGeoJSON() {
+      if (towers.length === 0) return alert("No hay torres para exportar.");
+      const data = towers.map(t => ({ nombre: t.name, tipo: t.type, lat: t.lat, lng: t.lng, cobertura_metros: t.radiusMeters }));
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'antenas_rf.json';
+      a.click();
+    }
+  </script>
+</body>
+</html>
