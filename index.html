@@ -322,11 +322,11 @@
     L.control.zoom({ position: 'bottomright' }).addTo(map);
 
     // Capa de mosaicos libre y sin restricciones de API Key
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
-      attribution: '&copy; OpenStreetMap &copy; CARTO'
+      attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
-
+    
     let towerCount = 1;
     let towers = [];
     let userMarker = null;
