@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AntenaMap - Mapeo de RF</title>
+    <!-- Leaflet CSS (Libre, sin API key) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        #map { height: calc(100vh - 5rem); }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 flex flex-col h-screen overflow-hidden">
+
+    <!-- Header / Barra Superior -->
+    <header class="bg-slate-800 border-b border-slate-700 p-4 flex flex-wrap justify-between items-center shadow-md z-20">
+        <h1 class="text-xl font-bold tracking-wide flex items-center gap-2">
+            📡 AntenaMap
+        </h1>
+        <div class="flex items-center gap-3">
+            <select id="tipoAntena" class="bg-slate-700 border border-slate-600 text-sm rounded-lg px-3 py-2 focus:ring-blue-500 focus:border-blue-500">
+                <option value="Torre de Telefonía">Torre de Telefonía</option>
+                <option value="Panel Sectorial">Panel Sectorial</option>
+                <option value="Tanque de Agua / Elevado">Tanque de Agua / Elevado</option>
+            </select>
+            <button id="btnUbicacion" class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition shadow">
+                📍 Guardar Mi Ubicación
+            </button>
+        </div>
+    </header>
+
+    <!-- Contenedor Principal -->
+    <div class="flex flex-1 relative overflow-hidden">
+        
+        <!-- Mapa (OpenStreetMap sin restricciones de API Key) -->
+        <div id="map" class="flex-1 z-10"></div>
+
+        <!-- Panel Lateral -->
+        <aside class="w-80 bg-slate-800 border-l border-slate-700 flex flex-col z-20 shadow-xl">
+            <div class="p-4 border-b border-slate-700 flex justify-between items-center">
+                <h2 class="font-semibold text-lg">Antenas Registradas</h2>
+                <span id="contadorAntenas" class="bg-slate-700 text-xs px-2.5 py-1 rounded-full font-bold">0</span>
+            </div>
+            
+            <div id="listaAntenas" class="flex-1 overflow-y-auto p-4 space-y-3 divide-y divide-slate-700/50">
+                <p class="text-sm text-slate-400 text-center py-6">Toca el mapa o usa "Guardar Mi Ubicación" para crear una antena.</p>
+            </div>
+
+            <div class="p-3 border-t border-slate-700 bg-slate-900/50 flex justify-between items-center">
+                <button onclick="exportarDatos()" class="text-xs text-blue-400 hover:underline">Exportar JSON</button>
+                <button onclick="borrarTodo()" class="text-xs text-red-400 hover:underline">Borrar Todo</button>
+            </div>
+        </aside>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        const STORAGE_KEY = 'antenamap_registros_v1';
+        let antenas = [];
+        let markersLayer = L.layerGroup();
+        
+        // Inicializar Mapa con OpenStreetMap (Completamente gratuito, sin claves requeridas)
+        const map = L.map('map').setView([-34.6037, -58.3816], 13);
+        
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        markersLayer.addTo(map);
+
+        // --- SISTEMA DE PERSISTENCIA LOCAL ---
+        function cargarAntenas() {
+            try {
+                const datosGuardados = localStorage.getItem(STORAGE_KEY);
+                if (datosGuardados) {
+                    const parsed = JSON.parse(datosGuardados);
+                    antenas = Array.isArray(parsed) ? parsed : [];
+                }
+            } catch (error) {
+                console.error("Error al leer localStorage:", error);
+                antenas = [];
+                localStorage.removeItem(STORAGE_KEY);
+            }
+            renderizarApp();
+        }
+
+        function guardarEnStorage() {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(antenas));
+            } catch (error) {
+                console.error("Error al guardar en localStorage:", error);
+                alert("No se pudo guardar el cambio. El almacenamiento local podría estar lleno.");
+            }
+        }
+
+        // --- GESTIÓN DE ANTENAS ---
+        function agregarAntena(lat, lng, tipo, nombrePersonalizado = null) {
+            const nuevaAntena = {
+                id: 'ant_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+                lat: parseFloat(lat),
+                lng: parseFloat(lng),
+                tipo: tipo,
+                nombre: nombrePersonalizado || `${tipo} #${antenas.length + 1}`,
+                fecha: new Date().toISOString()
+            };
+
+            antenas.push(nuevaAntena);
+            guardarEnStorage();
+            renderizarApp();
+        }
+
+        function eliminarAntena(id) {
+            antenas = antenas.filter(a => a.id !== id);
+            guardarEnStorage();
+            renderizarApp();
+        }
+
+        function borrarTodo() {
+            if (confirm("¿Estás seguro de eliminar todas las antenas registradas?")) {
+                antenas = [];
+                localStorage.removeItem(STORAGE_KEY);
+                renderizarApp();
+            }
+        }
+
+        // --- RENDERIZADO VISUAL ---
+        function renderizarApp() {
+            markersLayer.clearLayers();
+            const contenedorLista = document.getElementById('listaAntenas');
+            const contador = document.getElementById('contadorAntenas');
+            
+            contador.textContent = antenas.length;
+
+            if (antenas.length === 0) {
+                contenedorLista.innerHTML = `<p class="text-sm text-slate-400 text-center py-6">Toca el mapa o usa "Guardar Mi Ubicación" para crear una antena.</p>`;
+                return;
+            }
+
+            contenedorLista.innerHTML = '';
+
+            antenas.forEach((antena) => {
+                const marker = L.marker([antena.lat, antena.lng]).bindPopup(`
+                    <div class="text-slate-900">
+                        <strong>${antena.nombre}</strong><br>
+                        <span class="text-xs text-gray-600">${antena.tipo}</span><br>
+                        <button onclick="window.appEliminarDesdeMapa('${antena.id}')" class="mt-2 bg-red-500 text-white px-2 py-1 rounded text-xs">Eliminar</button>
+                    </div>
+                `);
+                markersLayer.addLayer(marker);
+
+                const item = document.createElement('div');
+                item.className = "pt-3 first:pt-0 flex justify-between items-start gap-2 group";
+                item.innerHTML = `
+                    <div class="cursor-pointer flex-1" onclick="centrarAntena(${antena.lat}, ${antena.lng})">
+                        <p class="font-medium text-sm text-slate-200 group-hover:text-blue-400 transition">${antena.nombre}</p>
+                        <p class="text-xs text-slate-400">${antena.tipo}</p>
+                        <p class="text-[10px] text-slate-500">${antena.lat.toFixed(4)}, ${antena.lng.toFixed(4)}</p>
+                    </div>
+                    <button onclick="eliminarAntena('${antena.id}')" class="text-slate-500 hover:text-red-400 p-1 transition" title="Eliminar">
+                        🗑️
+                    </button>
+                `;
+                contenedorLista.appendChild(item);
+            });
+        }
+
+        function centrarAntena(lat, lng) {
+            map.setView([lat, lng], 16);
+        }
+
+        window.appEliminarDesdeMapa = function(id) {
+            eliminarAntena(id);
+            map.closePopup();
+        };
+
+        // --- INTERACCIONES ---
+        map.on('click', (e) => {
+            const tipoSeleccionado = document.getElementById('tipoAntena').value;
+            agregarAntena(e.latlng.lat, e.latlng.lng, tipoSeleccionado);
+        });
+
+        document.getElementById('btnUbicacion').addEventListener('click', () => {
+            if (!navigator.geolocation) {
+                alert("Tu navegador no soporta geolocalización.");
+                return;
+            }
+
+            const btn = document.getElementById('btnUbicacion');
+            btn.textContent = "Obteniendo...";
+            btn.disabled = true;
+
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    const lat = position.coords.latitude;
+                    const lng = position.coords.longitude;
+                    const tipoSeleccionado = document.getElementById('tipoAntena').value;
+                    
+                    agregarAntena(lat, lng, tipoSeleccionado, "Mi Ubicación Actual");
+                    map.setView([lat, lng], 16);
+
+                    btn.textContent = "📍 Guardar Mi Ubicación";
+                    btn.disabled = false;
+                },
+                (error) => {
+                    console.error(error);
+                    alert("No se pudo obtener la ubicación actual.");
+                    btn.textContent = "📍 Guardar Mi Ubicación";
+                    btn.disabled = false;
+                },
+                { enableHighAccuracy: true, timeout: 10000 }
+            );
+        });
+
+        function exportarDatos() {
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(antenas, null, 2));
+            const downloadAnchor = document.createElement('a');
+            downloadAnchor.setAttribute("href", dataStr);
+            downloadAnchor.setAttribute("download", "antenamap_backup.json");
+            document.body.appendChild(downloadAnchor);
+            downloadAnchor.click();
+            downloadAnchor.remove();
+        }
+
+        // Cargar datos al iniciar
+        cargarAntenas();
+    </script>
+</body>
+</html>
